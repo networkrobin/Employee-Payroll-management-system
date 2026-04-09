@@ -1,55 +1,48 @@
-Employee Management System
+# Employee Payroll System in C
 
-A simple Employee Management System that allows users to manage employee records such as name, ID, and salary. This project combines a C-based backend for efficient data handling with a Python-based UI for user interaction.
+A **console-based Employee Payroll Management System** written in C with CSV storage and user authentication. The system supports **login, signup, employee management, and Excel-ready CSV export**, with **admin and user roles**.
 
-📌 Features
-  1,Add new employee records
-  2.View existing employee details
-  3.Update employee information
-  4.Delete employee records
-  5.Store and manage data efficiently using C backend
-🏗️ Project Structure
-employee-management/
-│
-├── backend/        # C source files for data processing
-│   ├── main.c
-│
-├── ui/             # Python UI code
-│   └── app.py
-│
-├── data/           # Data storage (if applicable)
-│
-└── README.md
-⚙️ Technologies Used
-C – Backend logic and data management
-Python – User Interface
-Standard file handling for data storage
-🚀 Getting Started
-Prerequisites
-GCC (or any C compiler)
-Python 3.x
-🔧 Installation & Setup
+---
 
-Clone the repository
+## Features
 
-git clone https://github.com/your-username/employee-management.git
-cd employee-management
+- **User Authentication**
+  - Login for existing users.
+  - Signup for new users with role assignment (`admin` or `user`).
+  - Passwords are stored as hashed values for basic security.
 
-Compile the C backend
+- **Admin Capabilities**
+  - Add new employees.
+  - Update existing employee details.
+  - Delete employees.
+  - View all employee records.
 
-gcc backend/main.c backend/employee.c -o backend/app
+- **User Capabilities**
+  - View employee records.
+  - Search employees by ID.
 
-Run the Python UI
+- **Employee Records**
+  - Stored in `employee.csv` in **Excel-ready format**.
+  - Fields: ID, Name, Basic Salary, HRA, DA, Deductions, Net Salary.
+  - Prevents duplicate employee IDs.
 
-python ui/app.py
-🧠 How It Works
-The C backend handles all core operations like storing, updating, and retrieving employee data.
-The Python UI interacts with the backend to display and modify data in a user-friendly way.
-📷 Future Improvements
-Add a graphical UI (Tkinter / PyQt)
-Use a database instead of file storage
-Improve error handling and validation
-Add search and filtering functionality
-🤝 Contributing
+- **Console UI**
+  - Pretty table output for employee list.
+  - Menu-driven system.
 
-Contributions are welcome! Feel free to fork the repository and submit a pull request.
+---
+
+## Requirements
+
+- C compiler (tested on `gcc`).
+- Windows / Linux / macOS terminal.
+
+---
+
+## Usage
+
+1. **Clone the repository**
+
+```bash
+git clone https://github.com/yourusername/employee-payroll-system.git
+cd employee-payroll-system
