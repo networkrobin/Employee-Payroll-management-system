@@ -1,0 +1,162 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+struct Employee {
+    int id;
+    char name[50];
+    float basic, hra, da, deductions, netSalary;
+};
+
+void calculateSalary(struct Employee *e) {
+    e->hra = 0.2 * e->basic;
+    e->da = 0.1 * e->basic;
+    e->netSalary = e->basic + e->hra + e->da - e->deductions;
+}
+
+void addEmployee() {
+    FILE *fp = fopen("employee.dat", "ab");
+    struct Employee e;
+
+    printf("Enter ID: ");
+    scanf("%d", &e.id);
+    printf("Enter Name: ");
+    scanf(" %[^\n]", e.name);
+    printf("Enter Basic Salary: ");
+    scanf("%f", &e.basic);
+    printf("Enter Deductions: ");
+    scanf("%f", &e.deductions);
+
+    calculateSalary(&e);
+
+    fwrite(&e, sizeof(e), 1, fp);
+    fclose(fp);
+
+    printf("Employee Added Successfully!\n");
+}
+
+void displayEmployees() {
+    FILE *fp = fopen("employee.dat", "rb");
+    struct Employee e;
+
+    printf("\n--- Employee Records ---\n");
+
+    while (fread(&e, sizeof(e), 1, fp)) {
+        printf("ID: %d\nName: %s\nBasic: %.2f\nNet Salary: %.2f\n\n",
+               e.id, e.name, e.basic, e.netSalary);
+    }
+
+    fclose(fp);
+}
+
+void searchEmployee() {
+    FILE *fp = fopen("employee.dat", "rb");
+    struct Employee e;
+    int id, found = 0;
+
+    printf("Enter ID to search: ");
+    scanf("%d", &id);
+
+    while (fread(&e, sizeof(e), 1, fp)) {
+        if (e.id == id) {
+            printf("Employee Found!\n");
+            printf("Name: %s\nNet Salary: %.2f\n", e.name, e.netSalary);
+            found = 1;
+            break;
+        }
+    }
+
+    if (!found)
+        printf("Employee not found!\n");
+
+    fclose(fp);
+}
+
+void updateEmployee() {
+    FILE *fp = fopen("employee.dat", "rb+");
+    struct Employee e;
+    int id, found = 0;
+
+    printf("Enter ID to update: ");
+    scanf("%d", &id);
+
+    while (fread(&e, sizeof(e), 1, fp)) {
+        if (e.id == id) {
+            printf("Enter new Basic Salary: ");
+            scanf("%f", &e.basic);
+            printf("Enter new Deductions: ");
+            scanf("%f", &e.deductions);
+
+            calculateSalary(&e);
+
+            fseek(fp, -sizeof(e), SEEK_CUR);
+            fwrite(&e, sizeof(e), 1, fp);
+
+            printf("Record Updated!\n");
+            found = 1;
+            break;
+        }
+    }
+
+    if (!found)
+        printf("Employee not found!\n");
+
+    fclose(fp);
+}
+
+void deleteEmployee() {
+    FILE *fp = fopen("employee.dat", "rb");
+    FILE *temp = fopen("temp.dat", "wb");
+    struct Employee e;
+    int id, found = 0;
+
+    printf("Enter ID to delete: ");
+    scanf("%d", &id);
+
+    while (fread(&e, sizeof(e), 1, fp)) {
+        if (e.id != id) {
+            fwrite(&e, sizeof(e), 1, temp);
+        } else {
+            found = 1;
+        }
+    }
+
+    fclose(fp);
+    fclose(temp);
+
+    remove("employee.dat");
+    rename("temp.dat", "employee.dat");
+
+    if (found)
+        printf("Record Deleted!\n");
+    else
+        printf("Employee not found!\n");
+}
+
+int main() {
+    int choice;
+
+    while (1) {
+        printf("\n--- Employee Payroll System ---\n");
+        printf("1. Add Employee\n");
+        printf("2. Display Employees\n");
+        printf("3. Search Employee\n");
+        printf("4. Update Employee\n");
+        printf("5. Delete Employee\n");
+        printf("6. Exit\n");
+        printf("Enter your choice: ");
+        scanf("%d", &choice);
+
+        switch (choice) {
+            case 1: addEmployee(); break;
+            case 2: displayEmployees(); break;
+            case 3: searchEmployee(); break;
+            case 4: updateEmployee(); break;
+            case 5: deleteEmployee(); break;
+            case 6: exit(0);
+            default: printf("Invalid choice!\n");
+        }
+    }
+
+    return 0;
+}
