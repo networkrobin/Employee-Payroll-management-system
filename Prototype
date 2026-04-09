@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <conio.h>
 
 struct Employee {
     int id;
@@ -8,46 +9,138 @@ struct Employee {
     float basic, hra, da, deductions, netSalary;
 };
 
-void calculateSalary(struct Employee *e) {
-    e->hra = 0.2 * e->basic;
-    e->da = 0.1 * e->basic;
-    e->netSalary = e->basic + e->hra + e->da - e->deductions;
+// ================= HASH =================
+unsigned long hashPassword(char *str) {
+    unsigned long hash = 5381;
+    int c;
+    while ((c = *str++))
+        hash = ((hash << 5) + hash) + c;
+    return hash;
 }
 
-// Safe integer input
-int inputInt(const char *msg) {
-    char buffer[100];
-    int value;
-    printf("%s", msg);
-    fgets(buffer, sizeof(buffer), stdin);
-    sscanf(buffer, "%d", &value);
-    return value;
+// ================= PASSWORD INPUT =================
+void inputPassword(char *password) {
+    char ch;
+    int i = 0;
+    while (1) {
+        ch = getch();
+        if (ch == 13) break;
+        else if (ch == 8 && i > 0) {
+            i--;
+            printf("\b \b");
+        } else if (i < 49) {
+            password[i++] = ch;
+            printf("*");
+        }
+    }
+    password[i] = '\0';
+    printf("\n");
 }
 
-// Safe float input
-float inputFloat(const char *msg) {
-    char buffer[100];
-    float value;
-    printf("%s", msg);
-    fgets(buffer, sizeof(buffer), stdin);
-    sscanf(buffer, "%f", &value);
-    return value;
+// ================= SAFE INPUT =================
+int inputInt(char *msg) {
+    char buf[100];
+    int val;
+    while (1) {
+        printf("%s", msg);
+        if (!fgets(buf, sizeof(buf), stdin)) continue;
+        if (sscanf(buf, "%d", &val) == 1 && val > 0) return val;
+        printf("Invalid input! Try again.\n");
+    }
 }
 
-// Check duplicate ID
-int isDuplicate(int id) {
-    FILE *fp = fopen("employee.csv", "r");
-    struct Employee e;
-    char line[200];
+float inputFloat(char *msg) {
+    char buf[100];
+    float val;
+    while (1) {
+        printf("%s", msg);
+        if (!fgets(buf, sizeof(buf), stdin)) continue;
+        if (sscanf(buf, "%f", &val) == 1 && val >= 0) return val;
+        printf("Invalid input! Try again.\n");
+    }
+}
 
+// ================= LOGIN FILE INIT =================
+void initLoginFile() {
+    FILE *fp = fopen("login.csv", "r");
+    if (!fp) {
+        fp = fopen("login.csv", "w");
+        fprintf(fp, "admin,%lu,admin\n", hashPassword("1234"));
+    }
+    fclose(fp);
+}
+
+// ================= CHECK USERNAME =================
+int usernameExists(const char *username) {
+    FILE *fp = fopen("login.csv", "r");
+    char line[150], fuser[50];
+    if (!fp) return 0;
+    while (fgets(line, sizeof(line), fp)) {
+        sscanf(line, "%49[^,]", fuser);
+        if (strcmp(username, fuser) == 0) {
+            fclose(fp);
+            return 1;
+        }
+    }
+    fclose(fp);
+    return 0;
+}
+
+// ================= SIGNUP =================
+void signup() {
+    char username[50], password[50], role[10];
+    FILE *fp = fopen("login.csv", "a");
+    if (!fp) return;
+
+    printf("Enter new username: ");
+    fgets(username, sizeof(username), stdin);
+    username[strcspn(username, "\n")] = 0;
+
+    if (usernameExists(username)) {
+        printf("Username already exists!\n");
+        fclose(fp);
+        return;
+    }
+
+    printf("Enter password: ");
+    inputPassword(password);
+
+    printf("Enter role (admin/user): ");
+    fgets(role, sizeof(role), stdin);
+    role[strcspn(role, "\n")] = 0;
+
+    if (strcmp(role, "admin") != 0 && strcmp(role, "user") != 0) {
+        printf("Invalid role! Defaulting to user.\n");
+        strcpy(role, "user");
+    }
+
+    fprintf(fp, "%s,%lu,%s\n", username, hashPassword(password), role);
+    fclose(fp);
+    printf("User registered successfully!\n");
+}
+
+// ================= LOGIN =================
+int login(char *roleOut, char *userOut) {
+    FILE *fp = fopen("login.csv", "r");
     if (!fp) return 0;
 
-    fgets(line, sizeof(line), fp); // skip header
+    char username[50], password[50], fuser[50], frole[10];
+    unsigned long fpass;
+    char line[150];
 
-    while (fscanf(fp, "%d,%49[^,],%f,%f,%f,%f,%f\n",
-                  &e.id, e.name, &e.basic, &e.hra,
-                  &e.da, &e.deductions, &e.netSalary) != EOF) {
-        if (e.id == id) {
+    printf("Username: ");
+    fgets(username, sizeof(username), stdin);
+    username[strcspn(username, "\n")] = 0;
+
+    printf("Password: ");
+    inputPassword(password);
+    unsigned long h = hashPassword(password);
+
+    while (fgets(line, sizeof(line), fp)) {
+        sscanf(line, "%49[^,],%lu,%9[^\n]", fuser, &fpass, frole);
+        if (strcmp(username, fuser) == 0 && h == fpass) {
+            strcpy(roleOut, frole);
+            strcpy(userOut, username);
             fclose(fp);
             return 1;
         }
@@ -57,31 +150,49 @@ int isDuplicate(int id) {
     return 0;
 }
 
-// Ensure header exists
-void ensureHeader() {
+// ================= EMPLOYEE FILE HANDLING =================
+void ensureEmployeeFile() {
     FILE *fp = fopen("employee.csv", "r");
-
-    if (fp == NULL) {
+    if (!fp) {
         fp = fopen("employee.csv", "w");
         fprintf(fp, "ID,Name,Basic,HRA,DA,Deductions,NetSalary\n");
     }
-
     fclose(fp);
 }
 
-void addEmployee() {
-    ensureHeader();
+// ================= DUPLICATE CHECK =================
+int isDuplicate(int id) {
+    FILE *fp = fopen("employee.csv", "r");
+    struct Employee e;
+    char line[200];
+    if (!fp) return 0;
+    fgets(line, sizeof(line), fp);
+    while (fscanf(fp, "%d,%49[^,],%f,%f,%f,%f,%f\n",
+                  &e.id, e.name, &e.basic, &e.hra,
+                  &e.da, &e.deductions, &e.netSalary) != EOF) {
+        if (e.id == id) {
+            fclose(fp);
+            return 1;
+        }
+    }
+    fclose(fp);
+    return 0;
+}
 
+// ================= SALARY CALCULATION =================
+void calculateSalary(struct Employee *e) {
+    e->hra = 0.2 * e->basic;
+    e->da = 0.1 * e->basic;
+    e->netSalary = e->basic + e->hra + e->da - e->deductions;
+}
+
+// ================= EMPLOYEE FUNCTIONS =================
+void addEmployee() {
+    ensureEmployeeFile();
     FILE *fp = fopen("employee.csv", "a");
     struct Employee e;
 
-    if (!fp) {
-        printf("File error!\n");
-        return;
-    }
-
     e.id = inputInt("Enter ID: ");
-
     if (isDuplicate(e.id)) {
         printf("ID already exists!\n");
         fclose(fp);
@@ -92,21 +203,12 @@ void addEmployee() {
     fgets(e.name, sizeof(e.name), stdin);
     e.name[strcspn(e.name, "\n")] = 0;
 
-    e.basic = inputFloat("Enter Basic Salary: ");
+    e.basic = inputFloat("Enter Basic: ");
     e.deductions = inputFloat("Enter Deductions: ");
-
-    if (e.basic < 0 || e.deductions < 0) {
-        printf("Invalid input!\n");
-        fclose(fp);
-        return;
-    }
-
     calculateSalary(&e);
 
     fprintf(fp, "%d,%s,%.2f,%.2f,%.2f,%.2f,%.2f\n",
-            e.id, e.name, e.basic, e.hra,
-            e.da, e.deductions, e.netSalary);
-
+            e.id, e.name, e.basic, e.hra, e.da, e.deductions, e.netSalary);
     fclose(fp);
     printf("Employee Added Successfully!\n");
 }
@@ -115,24 +217,22 @@ void displayEmployees() {
     FILE *fp = fopen("employee.csv", "r");
     struct Employee e;
     char line[200];
+    if (!fp) return;
 
-    if (!fp) {
-        printf("No records found!\n");
-        return;
-    }
-
-    fgets(line, sizeof(line), fp); // skip header
-
-    printf("\n--- Employee Records ---\n");
+    fgets(line, sizeof(line), fp);
+    printf("\n--------------------------------------------------------------------------------\n");
+    printf("%-5s %-20s %-10s %-10s %-10s %-12s %-12s\n",
+           "ID", "Name", "Basic", "HRA", "DA", "Deduct", "Net");
+    printf("--------------------------------------------------------------------------------\n");
 
     while (fscanf(fp, "%d,%49[^,],%f,%f,%f,%f,%f\n",
                   &e.id, e.name, &e.basic, &e.hra,
                   &e.da, &e.deductions, &e.netSalary) != EOF) {
-
-        printf("ID: %d\nName: %s\nNet Salary: %.2f\n\n",
-               e.id, e.name, e.netSalary);
+        printf("%-5d %-20s %-10.2f %-10.2f %-10.2f %-12.2f %-12.2f\n",
+               e.id, e.name, e.basic, e.hra, e.da,
+               e.deductions, e.netSalary);
     }
-
+    printf("--------------------------------------------------------------------------------\n");
     fclose(fp);
 }
 
@@ -141,30 +241,22 @@ void searchEmployee() {
     struct Employee e;
     char line[200];
     int id, found = 0;
-
-    if (!fp) {
-        printf("No records found!\n");
-        return;
-    }
+    if (!fp) return;
 
     fgets(line, sizeof(line), fp);
-
     id = inputInt("Enter ID to search: ");
 
     while (fscanf(fp, "%d,%49[^,],%f,%f,%f,%f,%f\n",
                   &e.id, e.name, &e.basic, &e.hra,
                   &e.da, &e.deductions, &e.netSalary) != EOF) {
-
         if (e.id == id) {
-            printf("Found: %s | Salary: %.2f\n", e.name, e.netSalary);
+            printf("\nFound: %s | Net Salary: %.2f\n", e.name, e.netSalary);
             found = 1;
             break;
         }
     }
 
-    if (!found)
-        printf("Employee not found!\n");
-
+    if (!found) printf("Employee not found!\n");
     fclose(fp);
 }
 
@@ -174,11 +266,7 @@ void updateEmployee() {
     struct Employee e;
     char line[200];
     int id, found = 0;
-
-    if (!fp || !temp) {
-        printf("File error!\n");
-        return;
-    }
+    if (!fp || !temp) return;
 
     fgets(line, sizeof(line), fp);
     fprintf(temp, "%s", line);
@@ -190,24 +278,22 @@ void updateEmployee() {
                   &e.da, &e.deductions, &e.netSalary) != EOF) {
 
         if (e.id == id) {
-            e.basic = inputFloat("Enter new Basic: ");
-            e.deductions = inputFloat("Enter new Deductions: ");
+            e.basic = inputFloat("New Basic: ");
+            e.deductions = inputFloat("New Deductions: ");
             calculateSalary(&e);
             found = 1;
         }
 
         fprintf(temp, "%d,%s,%.2f,%.2f,%.2f,%.2f,%.2f\n",
-                e.id, e.name, e.basic, e.hra,
-                e.da, e.deductions, e.netSalary);
+                e.id, e.name, e.basic, e.hra, e.da, e.deductions, e.netSalary);
     }
 
     fclose(fp);
     fclose(temp);
-
     remove("employee.csv");
     rename("temp.csv", "employee.csv");
 
-    printf(found ? "Updated!\n" : "Not found!\n");
+    printf(found ? "Updated successfully!\n" : "Employee not found!\n");
 }
 
 void deleteEmployee() {
@@ -216,11 +302,7 @@ void deleteEmployee() {
     struct Employee e;
     char line[200];
     int id, found = 0;
-
-    if (!fp || !temp) {
-        printf("File error!\n");
-        return;
-    }
+    if (!fp || !temp) return;
 
     fgets(line, sizeof(line), fp);
     fprintf(temp, "%s", line);
@@ -230,43 +312,68 @@ void deleteEmployee() {
     while (fscanf(fp, "%d,%49[^,],%f,%f,%f,%f,%f\n",
                   &e.id, e.name, &e.basic, &e.hra,
                   &e.da, &e.deductions, &e.netSalary) != EOF) {
-
-        if (e.id != id) {
-            fprintf(temp, "%d,%s,%.2f,%.2f,%.2f,%.2f,%.2f\n",
-                    e.id, e.name, e.basic, e.hra,
-                    e.da, e.deductions, e.netSalary);
-        } else {
+        if (e.id == id) {
             found = 1;
+            continue;
         }
+        fprintf(temp, "%d,%s,%.2f,%.2f,%.2f,%.2f,%.2f\n",
+                e.id, e.name, e.basic, e.hra, e.da, e.deductions, e.netSalary);
     }
 
     fclose(fp);
     fclose(temp);
-
     remove("employee.csv");
     rename("temp.csv", "employee.csv");
 
-    printf(found ? "Deleted!\n" : "Not found!\n");
+    printf(found ? "Deleted successfully!\n" : "Employee not found!\n");
 }
 
 int main() {
+    char role[10], username[50];
     int choice;
-    char buffer[50];
+    char buf[50];
+
+    initLoginFile();
+    ensureEmployeeFile();
 
     while (1) {
         printf("\n--- Employee Payroll System ---\n");
-        printf("1. Add Employee Data\n2. Display Employee Data\n3. Search Employee Data\n4. Update Employee Data\n5. Delete Employee Data\n6. Exit\n");
-        fgets(buffer, sizeof(buffer), stdin);
-        sscanf(buffer, "%d", &choice);
+        printf("1. Login\n2. Signup\n3. Exit\n");
+        printf("Enter choice: ");
+        if (!fgets(buf, sizeof(buf), stdin)) continue;
+        sscanf(buf, "%d", &choice);
+
+        if (choice == 1) {
+            if (login(role, username)) break;
+            else printf("Invalid login!\n");
+        } else if (choice == 2) signup();
+        else exit(0);
+    }
+
+    while (1) {
+        printf("\n--- MENU (%s) ---\n", role);
+        printf("1.Add Employee Data\n2.Display Employee Data\n3.Search Employee Data\n4.Update Employee Data\n5.Delete Employee Data\n6.Exit\n");
+        printf("Enter choice: ");
+        if (!fgets(buf, sizeof(buf), stdin)) continue;
+        sscanf(buf, "%d", &choice);
 
         switch (choice) {
-            case 1: addEmployee(); break;
+            case 1:
+                if (strcmp(role, "admin") == 0) addEmployee();
+                else printf("Access Denied\n");
+                break;
             case 2: displayEmployees(); break;
             case 3: searchEmployee(); break;
-            case 4: updateEmployee(); break;
-            case 5: deleteEmployee(); break;
+            case 4:
+                if (strcmp(role, "admin") == 0) updateEmployee();
+                else printf("Access Denied\n");
+                break;
+            case 5:
+                if (strcmp(role, "admin") == 0) deleteEmployee();
+                else printf("Access Denied\n");
+                break;
             case 6: exit(0);
-            default: printf("Invalid choice!\n");
+            default: printf("Invalid choice\n");
         }
     }
 }
