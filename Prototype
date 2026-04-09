@@ -14,53 +14,149 @@ void calculateSalary(struct Employee *e) {
     e->netSalary = e->basic + e->hra + e->da - e->deductions;
 }
 
+// Safe integer input
+int inputInt(const char *msg) {
+    char buffer[100];
+    int value;
+    printf("%s", msg);
+    fgets(buffer, sizeof(buffer), stdin);
+    sscanf(buffer, "%d", &value);
+    return value;
+}
+
+// Safe float input
+float inputFloat(const char *msg) {
+    char buffer[100];
+    float value;
+    printf("%s", msg);
+    fgets(buffer, sizeof(buffer), stdin);
+    sscanf(buffer, "%f", &value);
+    return value;
+}
+
+// Check duplicate ID
+int isDuplicate(int id) {
+    FILE *fp = fopen("employee.csv", "r");
+    struct Employee e;
+    char line[200];
+
+    if (!fp) return 0;
+
+    fgets(line, sizeof(line), fp); // skip header
+
+    while (fscanf(fp, "%d,%49[^,],%f,%f,%f,%f,%f\n",
+                  &e.id, e.name, &e.basic, &e.hra,
+                  &e.da, &e.deductions, &e.netSalary) != EOF) {
+        if (e.id == id) {
+            fclose(fp);
+            return 1;
+        }
+    }
+
+    fclose(fp);
+    return 0;
+}
+
+// Ensure header exists
+void ensureHeader() {
+    FILE *fp = fopen("employee.csv", "r");
+
+    if (fp == NULL) {
+        fp = fopen("employee.csv", "w");
+        fprintf(fp, "ID,Name,Basic,HRA,DA,Deductions,NetSalary\n");
+    }
+
+    fclose(fp);
+}
+
 void addEmployee() {
-    FILE *fp = fopen("employee.dat", "ab");
+    ensureHeader();
+
+    FILE *fp = fopen("employee.csv", "a");
     struct Employee e;
 
-    printf("Enter ID: ");
-    scanf("%d", &e.id);
+    if (!fp) {
+        printf("File error!\n");
+        return;
+    }
+
+    e.id = inputInt("Enter ID: ");
+
+    if (isDuplicate(e.id)) {
+        printf("ID already exists!\n");
+        fclose(fp);
+        return;
+    }
+
     printf("Enter Name: ");
-    scanf(" %[^\n]", e.name);
-    printf("Enter Basic Salary: ");
-    scanf("%f", &e.basic);
-    printf("Enter Deductions: ");
-    scanf("%f", &e.deductions);
+    fgets(e.name, sizeof(e.name), stdin);
+    e.name[strcspn(e.name, "\n")] = 0;
+
+    e.basic = inputFloat("Enter Basic Salary: ");
+    e.deductions = inputFloat("Enter Deductions: ");
+
+    if (e.basic < 0 || e.deductions < 0) {
+        printf("Invalid input!\n");
+        fclose(fp);
+        return;
+    }
 
     calculateSalary(&e);
 
-    fwrite(&e, sizeof(e), 1, fp);
-    fclose(fp);
+    fprintf(fp, "%d,%s,%.2f,%.2f,%.2f,%.2f,%.2f\n",
+            e.id, e.name, e.basic, e.hra,
+            e.da, e.deductions, e.netSalary);
 
+    fclose(fp);
     printf("Employee Added Successfully!\n");
 }
 
 void displayEmployees() {
-    FILE *fp = fopen("employee.dat", "rb");
+    FILE *fp = fopen("employee.csv", "r");
     struct Employee e;
+    char line[200];
+
+    if (!fp) {
+        printf("No records found!\n");
+        return;
+    }
+
+    fgets(line, sizeof(line), fp); // skip header
 
     printf("\n--- Employee Records ---\n");
 
-    while (fread(&e, sizeof(e), 1, fp)) {
-        printf("ID: %d\nName: %s\nBasic: %.2f\nNet Salary: %.2f\n\n",
-               e.id, e.name, e.basic, e.netSalary);
+    while (fscanf(fp, "%d,%49[^,],%f,%f,%f,%f,%f\n",
+                  &e.id, e.name, &e.basic, &e.hra,
+                  &e.da, &e.deductions, &e.netSalary) != EOF) {
+
+        printf("ID: %d\nName: %s\nNet Salary: %.2f\n\n",
+               e.id, e.name, e.netSalary);
     }
 
     fclose(fp);
 }
 
 void searchEmployee() {
-    FILE *fp = fopen("employee.dat", "rb");
+    FILE *fp = fopen("employee.csv", "r");
     struct Employee e;
+    char line[200];
     int id, found = 0;
 
-    printf("Enter ID to search: ");
-    scanf("%d", &id);
+    if (!fp) {
+        printf("No records found!\n");
+        return;
+    }
 
-    while (fread(&e, sizeof(e), 1, fp)) {
+    fgets(line, sizeof(line), fp);
+
+    id = inputInt("Enter ID to search: ");
+
+    while (fscanf(fp, "%d,%49[^,],%f,%f,%f,%f,%f\n",
+                  &e.id, e.name, &e.basic, &e.hra,
+                  &e.da, &e.deductions, &e.netSalary) != EOF) {
+
         if (e.id == id) {
-            printf("Employee Found!\n");
-            printf("Name: %s\nNet Salary: %.2f\n", e.name, e.netSalary);
+            printf("Found: %s | Salary: %.2f\n", e.name, e.netSalary);
             found = 1;
             break;
         }
@@ -73,49 +169,72 @@ void searchEmployee() {
 }
 
 void updateEmployee() {
-    FILE *fp = fopen("employee.dat", "rb+");
+    FILE *fp = fopen("employee.csv", "r");
+    FILE *temp = fopen("temp.csv", "w");
     struct Employee e;
+    char line[200];
     int id, found = 0;
 
-    printf("Enter ID to update: ");
-    scanf("%d", &id);
-
-    while (fread(&e, sizeof(e), 1, fp)) {
-        if (e.id == id) {
-            printf("Enter new Basic Salary: ");
-            scanf("%f", &e.basic);
-            printf("Enter new Deductions: ");
-            scanf("%f", &e.deductions);
-
-            calculateSalary(&e);
-
-            fseek(fp, -sizeof(e), SEEK_CUR);
-            fwrite(&e, sizeof(e), 1, fp);
-
-            printf("Record Updated!\n");
-            found = 1;
-            break;
-        }
+    if (!fp || !temp) {
+        printf("File error!\n");
+        return;
     }
 
-    if (!found)
-        printf("Employee not found!\n");
+    fgets(line, sizeof(line), fp);
+    fprintf(temp, "%s", line);
+
+    id = inputInt("Enter ID to update: ");
+
+    while (fscanf(fp, "%d,%49[^,],%f,%f,%f,%f,%f\n",
+                  &e.id, e.name, &e.basic, &e.hra,
+                  &e.da, &e.deductions, &e.netSalary) != EOF) {
+
+        if (e.id == id) {
+            e.basic = inputFloat("Enter new Basic: ");
+            e.deductions = inputFloat("Enter new Deductions: ");
+            calculateSalary(&e);
+            found = 1;
+        }
+
+        fprintf(temp, "%d,%s,%.2f,%.2f,%.2f,%.2f,%.2f\n",
+                e.id, e.name, e.basic, e.hra,
+                e.da, e.deductions, e.netSalary);
+    }
 
     fclose(fp);
+    fclose(temp);
+
+    remove("employee.csv");
+    rename("temp.csv", "employee.csv");
+
+    printf(found ? "Updated!\n" : "Not found!\n");
 }
 
 void deleteEmployee() {
-    FILE *fp = fopen("employee.dat", "rb");
-    FILE *temp = fopen("temp.dat", "wb");
+    FILE *fp = fopen("employee.csv", "r");
+    FILE *temp = fopen("temp.csv", "w");
     struct Employee e;
+    char line[200];
     int id, found = 0;
 
-    printf("Enter ID to delete: ");
-    scanf("%d", &id);
+    if (!fp || !temp) {
+        printf("File error!\n");
+        return;
+    }
 
-    while (fread(&e, sizeof(e), 1, fp)) {
+    fgets(line, sizeof(line), fp);
+    fprintf(temp, "%s", line);
+
+    id = inputInt("Enter ID to delete: ");
+
+    while (fscanf(fp, "%d,%49[^,],%f,%f,%f,%f,%f\n",
+                  &e.id, e.name, &e.basic, &e.hra,
+                  &e.da, &e.deductions, &e.netSalary) != EOF) {
+
         if (e.id != id) {
-            fwrite(&e, sizeof(e), 1, temp);
+            fprintf(temp, "%d,%s,%.2f,%.2f,%.2f,%.2f,%.2f\n",
+                    e.id, e.name, e.basic, e.hra,
+                    e.da, e.deductions, e.netSalary);
         } else {
             found = 1;
         }
@@ -124,28 +243,21 @@ void deleteEmployee() {
     fclose(fp);
     fclose(temp);
 
-    remove("employee.dat");
-    rename("temp.dat", "employee.dat");
+    remove("employee.csv");
+    rename("temp.csv", "employee.csv");
 
-    if (found)
-        printf("Record Deleted!\n");
-    else
-        printf("Employee not found!\n");
+    printf(found ? "Deleted!\n" : "Not found!\n");
 }
 
 int main() {
     int choice;
+    char buffer[50];
 
     while (1) {
         printf("\n--- Employee Payroll System ---\n");
-        printf("1. Add Employee\n");
-        printf("2. Display Employees\n");
-        printf("3. Search Employee\n");
-        printf("4. Update Employee\n");
-        printf("5. Delete Employee\n");
-        printf("6. Exit\n");
-        printf("Enter your choice: ");
-        scanf("%d", &choice);
+        printf("1. Add Employee Data\n2. Display Employee Data\n3. Search Employee Data\n4. Update Employee Data\n5. Delete Employee Data\n6. Exit\n");
+        fgets(buffer, sizeof(buffer), stdin);
+        sscanf(buffer, "%d", &choice);
 
         switch (choice) {
             case 1: addEmployee(); break;
@@ -157,6 +269,4 @@ int main() {
             default: printf("Invalid choice!\n");
         }
     }
-
-    return 0;
 }
