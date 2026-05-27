@@ -1,384 +1,408 @@
 import tkinter as tk
-from tkinter import messagebox, simpledialog
-import subprocess
-import sys
+from tkinter import ttk, messagebox
+import ctypes
 import os
+import sys
 
-# ================= PYINSTALLER SAFE PATH =================
+# ================= DLL LOADER =================
+def resource_path(filename):
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, filename)
+    return os.path.join(os.path.abspath('.'), filename)
 
-def resource_path(relative_path):
-    try:
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
+DLL_PATH = resource_path('payroll.dll')
 
-    return os.path.join(base_path, relative_path)
+try:
+    lib = ctypes.CDLL(DLL_PATH)
+except:
+    lib = None
 
-# Path to compiled C executable
-C_PROGRAM = resource_path("payroll.exe")
+# ================= MAIN WINDOW =================
+root = tk.Tk()
+root.title('Employee Payroll System')
+root.geometry('1000x650')
+root.configure(bg='#f5f5f5')
 
-# ================= GLOBAL LOGIN =================
+# ================= VARIABLES =================
+username_var = tk.StringVar()
+password_var = tk.StringVar()
+role_var = tk.StringVar(value='user')
 
-logged_username = ""
-logged_password = ""
-logged_role = ""
+emp_id_var = tk.StringVar()
+emp_name_var = tk.StringVar()
+basic_var = tk.StringVar()
+deduction_var = tk.StringVar()
+search_var = tk.StringVar()
 
-# ================= RUN C PROGRAM =================
+# ================= CSV HELPERS =================
+def ensure_files():
+    if not os.path.exists('employee.csv'):
+        with open('employee.csv', 'w') as f:
+            f.write('ID,Name,Basic,HRA,DA,Deductions,NetSalary\n')
 
-def run_c_program(cmd_input):
-    try:
-        proc = subprocess.Popen(
-            [C_PROGRAM],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
-        )
+    if not os.path.exists('login.csv'):
+        with open('login.csv', 'w') as f:
+            f.write('admin,1234,admin\n')
 
-        output, error = proc.communicate(cmd_input)
-
-        if error:
-            return f"ERROR:\n{error}"
-
-        return output
-
-    except FileNotFoundError:
-        return "ERROR: payroll.exe not found!"
+ensure_files()
 
 # ================= LOGIN =================
+def login_user():
 
-def login_gui():
-    global logged_username, logged_password, logged_role
+    username = username_var.get()
+    password = password_var.get()
 
-    username = entry_user.get().strip()
-    password = entry_pass.get().strip()
+    found = False
 
-    if not username or not password:
-        messagebox.showerror("Error", "Enter username and password")
+    with open('login.csv', 'r') as f:
+        for line in f:
+            data = line.strip().split(',')
+
+            if len(data) >= 3:
+                u, p, r = data
+
+                if username == u and password == p:
+                    found = True
+                    login_frame.pack_forget()
+                    dashboard_frame.pack(fill='both', expand=True)
+                    welcome_label.config(text=f'Welcome {username} ({r})')
+                    load_table()
+                    break
+
+    if not found:
+        messagebox.showerror('Error', 'Invalid Login')
+
+# ================= SIGNUP =================
+def signup_user():
+
+    username = username_var.get()
+    password = password_var.get()
+    role = role_var.get()
+
+    if username == '' or password == '':
+        messagebox.showerror('Error', 'Fill all fields')
         return
 
-    # Login + Exit
-    cmd_input = f"1\n{username}\n{password}\n6\n"
+    with open('login.csv', 'r') as f:
+        for line in f:
+            if line.startswith(username + ','):
+                messagebox.showerror('Error', 'Username exists')
+                return
 
-    output = run_c_program(cmd_input)
+    with open('login.csv', 'a') as f:
+        f.write(f'{username},{password},{role}\n')
 
-    if "Invalid login" in output:
-        messagebox.showerror("Login Failed", "Invalid username or password!")
+    messagebox.showinfo('Success', 'Signup Successful')
+
+# ================= ADD EMPLOYEE =================
+def add_employee():
+
+    emp_id = emp_id_var.get()
+    name = emp_name_var.get()
+    basic = basic_var.get()
+    deduction = deduction_var.get()
+
+    if not emp_id or not name or not basic:
+        messagebox.showerror('Error', 'Fill all fields')
         return
 
-    logged_username = username
-    logged_password = password
+    basic = float(basic)
+    deduction = float(deduction)
 
-    if "MENU (admin)" in output:
-        logged_role = "admin"
-    else:
-        logged_role = "user"
+    hra = basic * 0.2
+    da = basic * 0.1
+    net = basic + hra + da - deduction
 
-    messagebox.showinfo(
-        "Success",
-        f"Welcome {logged_username} ({logged_role})"
+    with open('employee.csv', 'a') as f:
+        f.write(f'{emp_id},{name},{basic},{hra},{da},{deduction},{net}\n')
+
+    messagebox.showinfo('Success', 'Employee Added')
+
+    clear_fields()
+    load_table()
+
+# ================= DISPLAY TABLE =================
+def load_table():
+
+    for row in employee_table.get_children():
+        employee_table.delete(row)
+
+    with open('employee.csv', 'r') as f:
+        next(f)
+
+        for line in f:
+            data = line.strip().split(',')
+            employee_table.insert('', 'end', values=data)
+
+# ================= SEARCH =================
+def search_employee():
+
+    search_id = search_var.get()
+
+    for row in employee_table.get_children():
+        employee_table.delete(row)
+
+    with open('employee.csv', 'r') as f:
+        next(f)
+
+        for line in f:
+            data = line.strip().split(',')
+
+            if data[0] == search_id:
+                employee_table.insert('', 'end', values=data)
+
+# ================= UPDATE =================
+def update_employee():
+
+    selected = employee_table.focus()
+
+    if not selected:
+        messagebox.showerror('Error', 'Select Employee')
+        return
+
+    values = employee_table.item(selected, 'values')
+    old_id = values[0]
+
+    rows = []
+
+    with open('employee.csv', 'r') as f:
+        rows = f.readlines()
+
+    with open('employee.csv', 'w') as f:
+
+        f.write(rows[0])
+
+        for row in rows[1:]:
+
+            data = row.strip().split(',')
+
+            if data[0] == old_id:
+
+                emp_id = emp_id_var.get()
+                name = emp_name_var.get()
+                basic = float(basic_var.get())
+                deduction = float(deduction_var.get())
+
+                hra = basic * 0.2
+                da = basic * 0.1
+                net = basic + hra + da - deduction
+
+                f.write(f'{emp_id},{name},{basic},{hra},{da},{deduction},{net}\n')
+
+            else:
+                f.write(row)
+
+    messagebox.showinfo('Success', 'Employee Updated')
+    load_table()
+
+# ================= DELETE =================
+def delete_employee():
+
+    selected = employee_table.focus()
+
+    if not selected:
+        messagebox.showerror('Error', 'Select Employee')
+        return
+
+    values = employee_table.item(selected, 'values')
+    delete_id = values[0]
+
+    rows = []
+
+    with open('employee.csv', 'r') as f:
+        rows = f.readlines()
+
+    with open('employee.csv', 'w') as f:
+
+        f.write(rows[0])
+
+        for row in rows[1:]:
+
+            data = row.strip().split(',')
+
+            if data[0] != delete_id:
+                f.write(row)
+
+    messagebox.showinfo('Success', 'Employee Deleted')
+    load_table()
+
+# ================= CLEAR =================
+def clear_fields():
+    emp_id_var.set('')
+    emp_name_var.set('')
+    basic_var.set('')
+    deduction_var.set('')
+
+# ================= LOGIN FRAME =================
+login_frame = tk.Frame(root, bg='white')
+login_frame.pack(fill='both', expand=True)
+
+login_title = tk.Label(
+    login_frame,
+    text='Employee Payroll System',
+    font=('Arial', 24, 'bold'),
+    bg='white'
+)
+login_title.pack(pady=30)
+
+form_frame = tk.Frame(login_frame, bg='white')
+form_frame.pack(pady=20)
+
+# Username
+username_label = tk.Label(form_frame, text='Username', bg='white', font=('Arial', 12))
+username_label.grid(row=0, column=0, padx=10, pady=10)
+
+username_entry = tk.Entry(form_frame, textvariable=username_var, width=30)
+username_entry.grid(row=0, column=1, padx=10, pady=10)
+
+# Password
+password_label = tk.Label(form_frame, text='Password', bg='white', font=('Arial', 12))
+password_label.grid(row=1, column=0, padx=10, pady=10)
+
+password_entry = tk.Entry(form_frame, textvariable=password_var, show='*', width=30)
+password_entry.grid(row=1, column=1, padx=10, pady=10)
+
+# Role
+role_label = tk.Label(form_frame, text='Role', bg='white', font=('Arial', 12))
+role_label.grid(row=2, column=0, padx=10, pady=10)
+
+role_combo = ttk.Combobox(form_frame, textvariable=role_var, values=['admin', 'user'], width=27)
+role_combo.grid(row=2, column=1, padx=10, pady=10)
+
+# Buttons
+login_button = tk.Button(
+    login_frame,
+    text='Login',
+    width=20,
+    bg='#4CAF50',
+    fg='white',
+    command=login_user
+)
+login_button.pack(pady=10)
+
+signup_button = tk.Button(
+    login_frame,
+    text='Signup',
+    width=20,
+    bg='#2196F3',
+    fg='white',
+    command=signup_user
+)
+signup_button.pack(pady=10)
+
+# ================= DASHBOARD =================
+dashboard_frame = tk.Frame(root, bg='#f5f5f5')
+
+welcome_label = tk.Label(
+    dashboard_frame,
+    text='Welcome',
+    font=('Arial', 20, 'bold'),
+    bg='#f5f5f5'
+)
+welcome_label.pack(pady=10)
+
+# ================= FORM =================
+input_frame = tk.Frame(dashboard_frame, bg='white')
+input_frame.pack(fill='x', padx=20, pady=10)
+
+fields = [
+    ('Employee ID', emp_id_var),
+    ('Employee Name', emp_name_var),
+    ('Basic Salary', basic_var),
+    ('Deduction', deduction_var)
+]
+
+for i, (label_text, variable) in enumerate(fields):
+
+    label = tk.Label(input_frame, text=label_text, bg='white', font=('Arial', 11))
+    label.grid(row=i, column=0, padx=10, pady=8, sticky='w')
+
+    entry = tk.Entry(input_frame, textvariable=variable, width=35)
+    entry.grid(row=i, column=1, padx=10, pady=8)
+
+# ================= BUTTONS =================
+button_frame = tk.Frame(dashboard_frame, bg='#f5f5f5')
+button_frame.pack(pady=10)
+
+buttons = [
+    ('Add Employee', add_employee, '#4CAF50'),
+    ('Update Employee', update_employee, '#FF9800'),
+    ('Delete Employee', delete_employee, '#F44336'),
+    ('Refresh', load_table, '#2196F3')
+]
+
+for text, cmd, color in buttons:
+
+    btn = tk.Button(
+        button_frame,
+        text=text,
+        width=18,
+        bg=color,
+        fg='white',
+        command=cmd
     )
 
-    root.destroy()
-    open_main_menu()
-
-# ================= MAIN MENU =================
-
-def open_main_menu():
-
-    menu = tk.Tk()
-
-    menu.title("Employee Payroll System")
-
-    menu.geometry("450x420")
-
-    tk.Label(
-        menu,
-        text=f"Logged in as: {logged_username} ({logged_role})",
-        font=("Arial", 12, "bold")
-    ).pack(pady=15)
-
-    # ================= ADD EMPLOYEE =================
-
-    def add_employee_gui():
-
-        if logged_role != "admin":
-            messagebox.showwarning(
-                "Access Denied",
-                "Only admins can add employees."
-            )
-            return
-
-        emp_id = simpledialog.askinteger(
-            "Add Employee",
-            "Enter Employee ID:"
-        )
-
-        if emp_id is None:
-            return
-
-        name = simpledialog.askstring(
-            "Add Employee",
-            "Enter Employee Name:"
-        )
-
-        if not name:
-            return
-
-        basic = simpledialog.askfloat(
-            "Add Employee",
-            "Enter Basic Salary:"
-        )
-
-        if basic is None:
-            return
-
-        deductions = simpledialog.askfloat(
-            "Add Employee",
-            "Enter Deductions:"
-        )
-
-        if deductions is None:
-            return
-
-        cmd_input = (
-            f"1\n"
-            f"{logged_username}\n"
-            f"{logged_password}\n"
-            f"1\n"
-            f"{emp_id}\n"
-            f"{name}\n"
-            f"{basic}\n"
-            f"{deductions}\n"
-            f"6\n"
-        )
-
-        output = run_c_program(cmd_input)
-
-        messagebox.showinfo("Result", output)
-
-    # ================= DISPLAY =================
-
-    def display_employees_gui():
-
-        cmd_input = (
-            f"1\n"
-            f"{logged_username}\n"
-            f"{logged_password}\n"
-            f"2\n"
-            f"6\n"
-        )
-
-        output = run_c_program(cmd_input)
-
-        win = tk.Toplevel(menu)
-
-        win.title("Employee Records")
-
-        text = tk.Text(
-            win,
-            width=120,
-            height=35,
-            font=("Courier New", 10)
-        )
-
-        text.pack()
-
-        text.insert(tk.END, output)
-
-    # ================= SEARCH =================
-
-    def search_employee_gui():
-
-        emp_id = simpledialog.askinteger(
-            "Search Employee",
-            "Enter Employee ID:"
-        )
-
-        if emp_id is None:
-            return
-
-        cmd_input = (
-            f"1\n"
-            f"{logged_username}\n"
-            f"{logged_password}\n"
-            f"3\n"
-            f"{emp_id}\n"
-            f"6\n"
-        )
-
-        output = run_c_program(cmd_input)
-
-        messagebox.showinfo("Search Result", output)
-
-    # ================= UPDATE =================
-
-    def update_employee_gui():
-
-        if logged_role != "admin":
-            messagebox.showwarning(
-                "Access Denied",
-                "Only admins can update employees."
-            )
-            return
-
-        emp_id = simpledialog.askinteger(
-            "Update Employee",
-            "Enter Employee ID:"
-        )
-
-        if emp_id is None:
-            return
-
-        basic = simpledialog.askfloat(
-            "Update Employee",
-            "Enter New Basic Salary:"
-        )
-
-        if basic is None:
-            return
-
-        deductions = simpledialog.askfloat(
-            "Update Employee",
-            "Enter New Deductions:"
-        )
-
-        if deductions is None:
-            return
-
-        cmd_input = (
-            f"1\n"
-            f"{logged_username}\n"
-            f"{logged_password}\n"
-            f"4\n"
-            f"{emp_id}\n"
-            f"{basic}\n"
-            f"{deductions}\n"
-            f"6\n"
-        )
-
-        output = run_c_program(cmd_input)
-
-        messagebox.showinfo("Update Result", output)
-
-    # ================= DELETE =================
-
-    def delete_employee_gui():
-
-        if logged_role != "admin":
-            messagebox.showwarning(
-                "Access Denied",
-                "Only admins can delete employees."
-            )
-            return
-
-        emp_id = simpledialog.askinteger(
-            "Delete Employee",
-            "Enter Employee ID:"
-        )
-
-        if emp_id is None:
-            return
-
-        cmd_input = (
-            f"1\n"
-            f"{logged_username}\n"
-            f"{logged_password}\n"
-            f"5\n"
-            f"{emp_id}\n"
-            f"6\n"
-        )
-
-        output = run_c_program(cmd_input)
-
-        messagebox.showinfo("Delete Result", output)
-
-    # ================= BUTTONS =================
-
-    tk.Button(
-        menu,
-        text="Add Employee",
-        width=30,
-        height=2,
-        command=add_employee_gui
-    ).pack(pady=5)
-
-    tk.Button(
-        menu,
-        text="Display Employees",
-        width=30,
-        height=2,
-        command=display_employees_gui
-    ).pack(pady=5)
-
-    tk.Button(
-        menu,
-        text="Search Employee",
-        width=30,
-        height=2,
-        command=search_employee_gui
-    ).pack(pady=5)
-
-    tk.Button(
-        menu,
-        text="Update Employee",
-        width=30,
-        height=2,
-        command=update_employee_gui
-    ).pack(pady=5)
-
-    tk.Button(
-        menu,
-        text="Delete Employee",
-        width=30,
-        height=2,
-        command=delete_employee_gui
-    ).pack(pady=5)
-
-    tk.Button(
-        menu,
-        text="Exit",
-        width=30,
-        height=2,
-        bg="red",
-        fg="white",
-        command=menu.destroy
-    ).pack(pady=20)
-
-    menu.mainloop()
-
-# ================= LOGIN WINDOW =================
-
-root = tk.Tk()
-
-root.title("Employee Payroll Login")
-
-root.geometry("350x220")
-
-tk.Label(
-    root,
-    text="Employee Payroll System",
-    font=("Arial", 14, "bold")
-).pack(pady=15)
-
-tk.Label(root, text="Username").pack()
-
-entry_user = tk.Entry(root, width=30)
-
-entry_user.pack(pady=5)
-
-tk.Label(root, text="Password").pack()
-
-entry_pass = tk.Entry(root, show="*", width=30)
-
-entry_pass.pack(pady=5)
-
-tk.Button(
-    root,
-    text="Login",
-    width=20,
-    height=2,
-    command=login_gui
-).pack(pady=20)
-
+    btn.pack(side='left', padx=10)
+
+# ================= SEARCH =================
+search_frame = tk.Frame(dashboard_frame, bg='#f5f5f5')
+search_frame.pack(pady=10)
+
+search_label = tk.Label(search_frame, text='Search by ID', bg='#f5f5f5')
+search_label.pack(side='left', padx=10)
+
+search_entry = tk.Entry(search_frame, textvariable=search_var)
+search_entry.pack(side='left', padx=10)
+
+search_button = tk.Button(
+    search_frame,
+    text='Search',
+    bg='#673AB7',
+    fg='white',
+    command=search_employee
+)
+search_button.pack(side='left')
+
+# ================= TABLE =================
+columns = (
+    'ID',
+    'Name',
+    'Basic',
+    'HRA',
+    'DA',
+    'Deduction',
+    'Net Salary'
+)
+
+employee_table = ttk.Treeview(
+    dashboard_frame,
+    columns=columns,
+    show='headings',
+    height=15
+)
+
+for col in columns:
+    employee_table.heading(col, text=col)
+    employee_table.column(col, width=120)
+
+employee_table.pack(fill='both', expand=True, padx=20, pady=20)
+
+# ================= ROW SELECT =================
+def select_record(event):
+
+    selected = employee_table.focus()
+
+    if not selected:
+        return
+
+    values = employee_table.item(selected, 'values')
+
+    emp_id_var.set(values[0])
+    emp_name_var.set(values[1])
+    basic_var.set(values[2])
+    deduction_var.set(values[5])
+
+employee_table.bind('<ButtonRelease-1>', select_record)
+
+# ================= RUN =================
 root.mainloop()
